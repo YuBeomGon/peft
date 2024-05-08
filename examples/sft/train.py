@@ -5,7 +5,7 @@ from typing import Optional
 
 from transformers import HfArgumentParser, TrainingArguments, set_seed
 from trl import SFTTrainer
-from utils import create_and_prepare_model, create_datasets
+from utils import create_and_prepare_model, create_datasets, create_datasets_from_db
 
 
 # Define and parse arguments.
@@ -79,6 +79,14 @@ class DataTrainingArguments:
         default="timdettmers/openassistant-guanaco",
         metadata={"help": "The preference dataset to use."},
     )
+    database_table_name: Optional[str] = field(
+        default="alignment_table",
+        metadata={"help": "database table"},
+    )    
+    database_url: Optional[str] = field(
+        default="postgresql://postgres:kk3249@localhost?port=5432&dbname=alignment",
+        metadata={"help": "database table"},
+    )        
     packing: Optional[bool] = field(
         default=False,
         metadata={"help": "Use packing dataset creating."},
@@ -113,13 +121,20 @@ def main(model_args, data_args, training_args):
         training_args.gradient_checkpointing_kwargs = {"use_reentrant": model_args.use_reentrant}
 
     # datasets
-    train_dataset, eval_dataset = create_datasets(
-        tokenizer,
-        data_args,
-        training_args,
-        apply_chat_template=model_args.chat_template_format != "none",
-    )
+    if hasattr(data_args, 'database_table_name'):
+        train_dataset, eval_dataset = create_datasets_from_db(
+            tokenizer,
+            data_args,
+            training_args
+        )             
 
+    else:
+        train_dataset, eval_dataset = create_datasets(
+            tokenizer,
+            data_args,
+            training_args,
+            apply_chat_template=model_args.chat_template_format != "none",
+        )
     # trainer
     trainer = SFTTrainer(
         model=model,

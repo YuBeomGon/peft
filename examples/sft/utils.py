@@ -2,7 +2,7 @@ import os
 from enum import Enum
 
 import torch
-from datasets import DatasetDict, load_dataset, load_from_disk
+from datasets import Dataset, DatasetDict, load_dataset, load_from_disk, concatenate_datasets
 from datasets.builder import DatasetGenerationError
 from transformers import (
     AutoModelForCausalLM,
@@ -41,6 +41,40 @@ class ChatmlSpecialTokens(str, Enum):
     @classmethod
     def list(cls):
         return [c.value for c in cls]
+    
+def create_datasets_from_db(tokenizer, data_args, training_args):
+    def make_prompt(example):
+        content = ""
+        if 'system' in example:
+            content += f"""\n\nSystem:{example["system"]}"""
+        if 'human' in example:
+            content += f"""\n\nHuman:{example["human"]}"""        
+        if 'assistant' in example:
+            content += f"""\n\nAssistant:\n {example["assistant"]} <|im_end|>"""           
+        example['content'] = content
+        return example
+
+    db_url = f"{data_args.database_url}"
+    table_lists = f"{data_args.database_table_name}"
+    table_lists = table_lists.split(',')
+
+    ds_list = [Dataset.from_sql(f'select system, human, assistant, src from {table};', db_url) for table in table_lists]
+    ds = concatenate_datasets(ds_list)
+    
+    raw_dataset = DatasetDict({'train':ds})
+    raw_dataset = raw_dataset.map(make_prompt, remove_columns=raw_dataset['train'].column_names)
+    raw_dataset = raw_dataset.shuffle()
+    
+    raw_dataset = raw_dataset['train'].train_test_split(test_size=0.1)
+    
+
+    train_data = raw_dataset["train"]
+    valid_data = raw_dataset["test"]
+    print(f"Size of the train set: {len(train_data)}. Size of the validation set: {len(valid_data)}")
+    print(f"A sample of train dataset: {train_data[:2]}")
+    print(f"A sample of train dataset: {valid_data[:2]}")
+
+    return train_data, valid_data
 
 
 def create_datasets(tokenizer, data_args, training_args, apply_chat_template=False):
