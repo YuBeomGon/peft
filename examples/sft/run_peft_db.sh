@@ -7,7 +7,7 @@ logging_steps=1000
 python peft/examples/sft/train.py \
 --seed 100 \
 --model_name_or_path $model_name \
---database_table_name "alignment_table" \
+--database_table_name $table_names \
 --database_url "postgresql://postgres:kk3249@localhost?port=5432&dbname=alignment" \
 --chat_template_format "chatml" \
 --add_special_tokens False \

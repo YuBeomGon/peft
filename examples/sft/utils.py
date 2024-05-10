@@ -95,23 +95,32 @@ def create_datasets_from_db(tokenizer, data_args, training_args):
     align_ds = concatenate_datasets(align_ds)
     chat_ds = concatenate_datasets(chat_ds)       
     
-    raw_align_dataset = DatasetDict({'train':align_ds})
-    align_remove_columns = set(raw_align_dataset['train'].column_names) - set(['content', 'src'])
-    raw_align_dataset = raw_align_dataset.map(make_align_prompt, remove_columns=align_remove_columns)
-    raw_align_dataset = raw_align_dataset.shuffle()
-    print('raw_align_dataset', raw_align_dataset)
-    print(raw_align_dataset['train'][:2])
-    
-    raw_chat_dataset = DatasetDict({'train':chat_ds})
-    chat_remove_columns = set(raw_chat_dataset['train'].column_names) - set(['content', 'src'])
-    raw_chat_dataset = raw_chat_dataset.map(make_chat_prompt, remove_columns=chat_remove_columns)
-    raw_chat_dataset = raw_chat_dataset.shuffle()        
-    print('raw_chat_dataset', raw_chat_dataset)
-    print(raw_chat_dataset['train'][:2])             
-    
-    raw_datasets = concatenate_datasets([raw_align_dataset['train'], raw_chat_dataset['train']])
-    raw_datasets = DatasetDict({'train':raw_datasets})
-    raw_datasets = raw_datasets.shuffle()
+    if align_ds:
+        align_ds = concatenate_datasets(align_ds)
+        raw_align_dataset = DatasetDict({'train':align_ds})
+        align_remove_columns = set(raw_align_dataset['train'].column_names) - set(['content', 'src'])
+        raw_align_dataset = raw_align_dataset.map(make_align_prompt, remove_columns=align_remove_columns)
+        raw_align_dataset = raw_align_dataset.shuffle()
+        print('raw_align_dataset', raw_align_dataset)
+        print(raw_align_dataset['train'][:2])
+    if chat_ds:
+        chat_ds = concatenate_datasets(chat_ds)
+        raw_chat_dataset = DatasetDict({'train':chat_ds})
+        chat_remove_columns = set(raw_chat_dataset['train'].column_names) - set(['content', 'src'])
+        raw_chat_dataset = raw_chat_dataset.map(make_chat_prompt, remove_columns=chat_remove_columns)
+        raw_chat_dataset = raw_chat_dataset.shuffle()
+        print('raw_chat_dataset', raw_chat_dataset)
+        print(raw_chat_dataset['train'][:2])
+    if align_ds and chat_ds:
+        raw_datasets = concatenate_datasets([raw_align_dataset['train'], raw_chat_dataset['train']])
+        raw_datasets = DatasetDict({'train':raw_datasets})
+        raw_datasets = raw_datasets.shuffle()
+    elif align_ds:
+        raw_datasets = raw_align_dataset
+    elif chat_ds:
+        raw_datasets = raw_chat_dataset
+    else:
+        print("*****warning one dataset should be selected")
     
     print('raw_datasets', raw_datasets)
     print(raw_datasets['train'][:2])
