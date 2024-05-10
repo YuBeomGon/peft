@@ -91,9 +91,6 @@ def create_datasets_from_db(tokenizer, data_args, training_args):
             align_ds.append(ds)
         elif 'chat' in table:
             chat_ds.append(ds)    
-            
-    align_ds = concatenate_datasets(align_ds)
-    chat_ds = concatenate_datasets(chat_ds)       
     
     if align_ds:
         align_ds = concatenate_datasets(align_ds)
