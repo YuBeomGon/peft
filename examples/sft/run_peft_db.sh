@@ -1,7 +1,7 @@
 #!/bin/bash
 
 model_name="yanolja/EEVE-Korean-Instruct-10.8B-v1.0"
-table_names="alignment_table, chat_table"
+table_names="alignment_table,chat_table"
 logging_steps=1000
 
 python peft/examples/sft/train.py \

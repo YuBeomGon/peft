@@ -1,4 +1,5 @@
 import os
+import json
 from enum import Enum
 
 import torch
@@ -15,7 +16,7 @@ from peft import LoraConfig
 
 DEFAULT_CHATML_CHAT_TEMPLATE = "{% for message in messages %}\n{{'<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>' + '\n'}}{% if loop.last and add_generation_prompt %}{{'<|im_start|>assistant\n' }}{% endif %}{% endfor %}"
 DEFAULT_ZEPHYR_CHAT_TEMPLATE = "{% for message in messages %}\n{% if message['role'] == 'user' %}\n{{ '<|user|>\n' + message['content'] + eos_token }}\n{% elif message['role'] == 'system' %}\n{{ '<|system|>\n' + message['content'] + eos_token }}\n{% elif message['role'] == 'assistant' %}\n{{ '<|assistant|>\n'  + message['content'] + eos_token }}\n{% endif %}\n{% if loop.last and add_generation_prompt %}\n{{ '<|assistant|>' }}\n{% endif %}\n{% endfor %}"
-
+EndofSeq = "<|im_end|>"
 
 class ZephyrSpecialTokens(str, Enum):
     user = "<|user|>"
@@ -43,33 +44,83 @@ class ChatmlSpecialTokens(str, Enum):
         return [c.value for c in cls]
     
 def create_datasets_from_db(tokenizer, data_args, training_args):
-    def make_prompt(example):
+    def make_align_prompt(example):
         content = ""
         if 'system' in example:
-            content += f"""\n\nSystem:{example["system"]}"""
+            content += f"""\n\nSystem:{example["system"]} {EndofSeq}"""
         if 'human' in example:
-            content += f"""\n\nHuman:{example["human"]}"""        
+            content += f"""\n\nHuman:{example["human"]} {EndofSeq}"""        
         if 'assistant' in example:
-            content += f"""\n\nAssistant:\n {example["assistant"]} <|im_end|>"""           
+            content += f"""\n\nAssistant:\n {example["assistant"]} {EndofSeq}"""           
         example['content'] = content
         return example
+    
+    def make_chat_prompt(example):
+        content = ""
+        # print(type(example['content']))
+        # print(example['content'])
+        # example = json.loads(example['content'])
+        for e in example['content']:
+            if e['from'] in ('system','System'):
+                content += f"\n\nSystem: {e['value']} {EndofSeq}"
+            if e['from'] in ('user', 'human'):
+                content += f"\n\nHuman: {e['value']} {EndofSeq}"
+            if e['from'] in ('gpt', 'assistant', 'bot'):
+                content += f"\n\nAssistant: {e['value']} {EndofSeq}"
+                 
+        example['content'] = content
+        return example    
 
     db_url = f"{data_args.database_url}"
-    table_lists = f"{data_args.database_table_name}"
-    table_lists = table_lists.split(',')
+    table_names = f"{data_args.database_table_name}"
+    table_names = table_names.split(',')
 
-    ds_list = [Dataset.from_sql(f'select system, human, assistant, src from {table};', db_url) for table in table_lists]
-    ds = concatenate_datasets(ds_list)
+    ds_list = []
+    for table in table_names:
+        if table == "alignment_table":
+            tmp = Dataset.from_sql(f'select system, human, assistant, src from {table};', db_url)
+        elif table == "chat_table":
+            tmp = Dataset.from_sql(f'select content, src from {table};', db_url)
+        ds_list.append(tmp)
+        
+    align_ds = []
+    chat_ds = []
     
-    raw_dataset = DatasetDict({'train':ds})
-    raw_dataset = raw_dataset.map(make_prompt, remove_columns=raw_dataset['train'].column_names)
-    raw_dataset = raw_dataset.shuffle()
+    for table, ds in zip(table_names, ds_list):
+        if 'alignment' in table:
+            align_ds.append(ds)
+        elif 'chat' in table:
+            chat_ds.append(ds)    
+            
+    align_ds = concatenate_datasets(align_ds)
+    chat_ds = concatenate_datasets(chat_ds)       
     
-    raw_dataset = raw_dataset['train'].train_test_split(test_size=0.1)
+    raw_align_dataset = DatasetDict({'train':align_ds})
+    align_remove_columns = set(raw_align_dataset['train'].column_names) - set(['content', 'src'])
+    raw_align_dataset = raw_align_dataset.map(make_align_prompt, remove_columns=align_remove_columns)
+    raw_align_dataset = raw_align_dataset.shuffle()
+    print('raw_align_dataset', raw_align_dataset)
+    print(raw_align_dataset['train'][:2])
+    
+    raw_chat_dataset = DatasetDict({'train':chat_ds})
+    chat_remove_columns = set(raw_chat_dataset['train'].column_names) - set(['content', 'src'])
+    raw_chat_dataset = raw_chat_dataset.map(make_chat_prompt, remove_columns=chat_remove_columns)
+    raw_chat_dataset = raw_chat_dataset.shuffle()        
+    print('raw_chat_dataset', raw_chat_dataset)
+    print(raw_chat_dataset['train'][:2])             
+    
+    raw_datasets = concatenate_datasets([raw_align_dataset['train'], raw_chat_dataset['train']])
+    raw_datasets = DatasetDict({'train':raw_datasets})
+    raw_datasets = raw_datasets.shuffle()
+    
+    print('raw_datasets', raw_datasets)
+    print(raw_datasets['train'][:2])
+    
+    raw_datasets = raw_datasets['train'].train_test_split(test_size=0.1)
     
 
-    train_data = raw_dataset["train"]
-    valid_data = raw_dataset["test"]
+    train_data = raw_datasets["train"]
+    valid_data = raw_datasets["test"]
     print(f"Size of the train set: {len(train_data)}. Size of the validation set: {len(valid_data)}")
     print(f"A sample of train dataset: {train_data[:2]}")
     print(f"A sample of train dataset: {valid_data[:2]}")

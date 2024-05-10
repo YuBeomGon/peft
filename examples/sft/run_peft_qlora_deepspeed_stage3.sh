@@ -1,13 +1,13 @@
 #!/bin/bash
 
 model_name="yanolja/EEVE-Korean-Instruct-10.8B-v1.0"
-table_names="alignment_table, chat_table"
+table_names="alignment_table,chat_table"
 logging_steps=1000
 
 accelerate launch --config_file "peft/examples/sft/configs/deepspeed_config_z3_qlora.yaml"  peft/examples/sft/train.py \
 --seed 100 \
 --model_name_or_path $model_name \
---database_table_name "alignment_table" \
+--database_table_name $table_names \
 --database_url "postgresql://postgres:kk3249@114.110.135.85?port=5432&dbname=alignment" \
 --chat_template_format "chatml" \
 --add_special_tokens False \
